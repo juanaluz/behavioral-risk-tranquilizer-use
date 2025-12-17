@@ -1,0 +1,284 @@
+---
+title: ""
+author: ""
+date: ""
+output:
+  pdf_document:
+    latex_engine: xelatex
+header-includes:
+- \usepackage{booktabs}
+---
+\begin{titlepage}
+    \centering
+    {\Large \textbf{Universidad Nacional de Córdoba} \par}
+    \vspace{0.5cm}
+    {\large Facultad de Psicología \par}
+    \vspace{1cm}
+    \includegraphics[width=0.3\textwidth]{logo.jpg}
+    \vspace{2cm}
+   
+    {\Huge \textbf{Análisis de factores asociados al consumo de tranquilizantes sin prescripción médica} \par}
+    \vspace{0.5cm}
+    {\Large \textbf{} Juana Luz Carbajal \par}
+    \vspace{0.5cm}
+    {\Large \textbf{} Análisis de datos con R \par}
+    \vspace{0.5cm}
+    {\Large \textbf{} Noviembre 2025 \par}
+    \vfill
+\end{titlepage}
+\newpage
+
+\tableofcontents
+\newpage
+
+# Introducción
+
+El presente trabajo tiene como objetivo analizar los factores asociados al consumo de tranquilizantes o ansiolíticos (TR) sin prescripción médica en la población argentina. El análisis se basa en los datos de la encuesta ENCOPRAC 2022.
+
+A diferencia de enfoques anteriores, este estudio analiza la **prevalencia de vida** (haber consumido alguna vez), lo que permite trabajar con la totalidad de la muestra representativa y comparar de manera robusta a los consumidores experimentales con la población general que nunca ha consumido.
+
+```{r setup, include=TRUE}
+knitr::opts_chunk$set(echo = T, message = F, warning = F)
+```
+
+Dada la naturaleza educativa de la actividad he decidido conservar las lineas de código en esta presentación.
+
+# Metodología
+
+Se utilizó el software R para porcesar y analizar los datos crudos. 
+
+1. Variable dependiente: Se seleccionó la variable TRS_01 del manual de usuario, que indaga: "Alguna vez en la vida, ¿ha consumido tranquilizantes sin receta médica?"
+2. Variables predictoras: Se incluyeron el sexo, la edad, el clima educativo del hogar, la salud autopercibida, la percpecion del riesgo de tomar TR y la propensión a automedicarse. 
+
+Se trabajó con la muestra completa de la encuesta ($N = 12,062$), excluyendo únicamente aquellos casos con respuestas inválidas (No sabe / No contesta) en las variables de interés. Se realizó un análisis descriptivo comparativo y un modelo de regresión logística binomial (GLM) para identificar predictores de riesgo.
+
+# Carga y preparación de datos
+```{r cargar datos}
+# Cargar librerias
+library(tidyverse)
+library(readr)
+library(gtsummary)
+library(here)
+library(kableExtra)
+library(scales)
+
+# Cargar datos
+datos_crudos <- read_delim("base_usuario_encoprac2022.txt", delim = "|",
+  locale = locale(decimal_mark = ","),
+  show_col_types = FALSE
+)
+
+# Selección y recodificación
+datos_finales <- datos_crudos %>%
+  select(
+    TRS_01,           # Variable dependiente: Consumo alguna vez en la vida
+    SEXO_SEL, 
+    GRUPO_EDAD_SEL, 
+    CLIMA_EDUCATIVO, 
+    SA_05,            # Consulta por angustia
+    PR_06_3A,         # Percepción de riesgo
+    SA_03,            # Salud general
+    SA_08             # Automedicación
+  ) %>%
+  mutate(
+    # --- Variable Dependiente (TRS_01) ---
+    # 1 = Sí, 2 = No. Convertimos a 1 (Sí) y 0 (No) para el modelo.
+    consumio_vida = case_when(
+      TRS_01 == 1 ~ 1,
+      TRS_01 == 2 ~ 0,
+      TRUE ~ NA_real_ 
+    ),
+    
+    # --- Etiquetas para gráficos ---
+    consumio_factor = factor(consumio_vida, 
+                             levels = c(0, 1), 
+                             labels = c("Nunca consumió", "Ha consumido")),
+
+    # --- Variables predictoras ---
+    sexo = factor(case_when(
+      SEXO_SEL == 1 ~ "Varón",
+      SEXO_SEL == 2 ~ "Mujer"
+    ), levels = c("Varón", "Mujer")),
+    
+    edad = factor(case_when(
+      GRUPO_EDAD_SEL == 1 ~ "16-24 años",
+      GRUPO_EDAD_SEL == 2 ~ "25-34 años",
+      GRUPO_EDAD_SEL == 3 ~ "35-49 años",
+      GRUPO_EDAD_SEL %in% c(4, 5) ~ "50-75 años"
+    )),
+    
+    clima_educ = factor(case_when(
+      CLIMA_EDUCATIVO == 1 ~ "Bajo",
+      CLIMA_EDUCATIVO == 2 ~ "Medio",
+      CLIMA_EDUCATIVO == 3 ~ "Alto",
+      TRUE ~ NA_character_
+    ), levels = c("Bajo", "Medio", "Alto")),
+
+    consulta_angustia = factor(case_when(
+      SA_05 == 1 ~ "Sí consultó", 
+      SA_05 == 2 ~ "No consultó",
+      TRUE ~ NA_character_ 
+    ), levels = c("No consultó", "Sí consultó")),
+    
+    percep_riesgo = factor(case_when(
+      PR_06_3A == 1 ~ "Ningún riesgo",
+      PR_06_3A == 2 ~ "Riesgo leve",
+      PR_06_3A == 3 ~ "Riesgo moderado",
+      PR_06_3A == 4 ~ "Gran riesgo",
+      TRUE ~ NA_character_
+    ), levels = c("Ningún riesgo", "Riesgo leve", "Riesgo moderado", "Gran riesgo")),
+
+    salud_general = factor(case_when(
+      SA_03 %in% c(1, 2, 3) ~ "Regular o Peor", 
+      SA_03 %in% c(4, 5)   ~ "Buena o Mejor",  
+      TRUE ~ NA_character_
+    ), levels = c("Buena o Mejor", "Regular o Peor")),
+    
+    se_automedica = factor(case_when(
+      SA_08 == 3 ~ "Sí", 
+      SA_08 %in% c(1, 2, 4) ~ "No",
+      TRUE ~ NA_character_
+    ), levels = c("No", "Sí"))
+  ) %>%
+  # Eliminar casos incompletos
+  drop_na()
+
+# Verificación de N
+n_total <- nrow(datos_finales)
+print(paste("Total de casos válidos para análisis:", n_total))
+```
+
+# Análisis descriptivo.
+
+Una vez que los datos estan limpios exploramos las caracteristicas de la muestra.
+
+## Prevalencia general
+
+Observamos la distribución del consumo alguna vez en la vida en la muestra total.
+```{r prevalencia}
+datos_finales %>%
+  select(consumio_factor) %>%
+  tbl_summary(
+    label = list(consumio_factor ~ "Consumo de Tranquilizantes (Vida)"),
+    statistic = all_categorical() ~ "{n} / {N} ({p}%)"
+  ) %>%
+  as_kable_extra(caption = "Prevalencia de vida en la muestra total") %>%
+  kable_styling(latex_options = "HOLD_position")
+```
+
+## Perfil de muestra
+
+Ahora exploramos las caracteristicas de la muestra. La tabla tbl_summary nos permite comparar el perfil del grupo que "Si consumió" con el grupo que "No consumió".
+```{r tabla descriptiva}
+datos_finales %>%
+  select(sexo, edad, clima_educ, consulta_angustia, 
+         percep_riesgo, salud_general, se_automedica, consumio_factor) %>%
+  tbl_summary(
+    by = consumio_factor,
+    percent = "row", 
+    label = list(
+      sexo ~ "Sexo",
+      edad ~ "Grupo Etario",
+      clima_educ ~ "Clima Educativo",
+      consulta_angustia ~ "Consultó por Angustia",
+      percep_riesgo ~ "Percepción de Riesgo",
+      salud_general ~ "Salud Autopercibida",
+      se_automedica ~ "Tendencia a Automedicarse"
+    )
+  ) %>%
+  add_p() %>%
+  bold_p() %>%
+  as_kable_extra(caption = "Comparativa: Consumidores vs. No Consumidores", booktabs = T) %>%
+  kable_styling( latex_options = "HOLD_position")
+```
+
+# Análisis bivariado 
+
+Usamos ggplot2 para visualizar las asociaciones clave. 
+
+## Percepción de riesgo vs. consumo
+```{r asociacion 2}
+ggplot(datos_finales, aes(x = percep_riesgo, fill = consumio_factor)) +
+  geom_bar(position = "fill") +
+  scale_y_continuous(labels = scales::percent) +
+  scale_fill_manual(values = c("#e5e5e5", "#2c3e50")) +
+  labs(
+    title = "Consumo según Percepción de Riesgo",
+    subtitle = "A mayor riesgo percibido, menor proporción de consumo histórico",
+    y = "Proporción", x = "Nivel de Riesgo", fill = ""
+  ) +
+  theme_minimal() +
+  theme(legend.position = "top")
+```
+
+
+# Modelo de regresión logística
+
+Ajustamos un modelo multivariado para predecir la probabilidad de haber consumido tranquilizantes sin receta, controlando por todas las variables simultáneamente.
+
+```{r}
+# 1. Ajustar el modelo
+modelo_glm <- glm(
+  consumio_vida ~ sexo + edad + clima_educ + consulta_angustia + 
+  percep_riesgo + salud_general + se_automedica,
+  family = binomial(link = "logit"),
+  data = datos_finales
+)
+
+# 2. Verificar que existe
+summary(modelo_glm)
+
+# Tabla de resultados con Odds Ratios
+library(broom)
+library(dplyr)
+library(kableExtra)
+
+# Crear tabla
+res_tabla <- tidy(modelo_glm, conf.int = TRUE, exponentiate = TRUE) %>%
+  # Limpieza de datos
+  dplyr::select(term, estimate, conf.low, conf.high, p.value) %>%
+  dplyr::mutate(
+    term = ifelse(term == "(Intercept)", "Intercepto", term),
+    OR = round(estimate, 2),
+    IC_95 = paste0(round(conf.low, 2), " - ", round(conf.high, 2)),
+    p_valor = ifelse(p.value < 0.001, "<0.001", round(p.value, 3))
+  ) %>%
+  dplyr::select(Termino = term, OR, `IC 95%` = IC_95, `Valor p` = p_valor)
+
+
+res_tabla %>%
+  kable(
+    caption = "Odds Ratios - Modelo Logístico (Prevalencia de Vida)", 
+    booktabs = TRUE,
+    format = "latex" 
+  ) %>%
+  kable_styling(
+    latex_options = c("HOLD_position", "striped"), 
+    position = "center"
+  )
+```
+
+# Análisis de datos
+
+## Resultados del modelo de regresión logística
+
+El ajuste del modelo logístico sobre la muestra completa ($N=11,206$) ha permitido identificar perfiles de riesgo robustos, controlando simultáneamente por factores sociodemográficos y conductuales. A diferencia del análisis bivariado, donde la edad parecía significativa, en el modelo multivariado **ni la edad, ni el sexo, ni el clima educativo resultaron ser predictores significativos** ($p > 0.05$). Esto indica que el consumo de tranquilizantes sin receta está más ligado a comportamientos y percepciones que a características demográficas.
+
+Los predictores más potentes fueron:
+
+1.  **Percepción de Riesgo (Factor Protector):** Se confirma un fuerte gradiente protector. Comparado con quienes no perciben riesgo, aquellos que perciben un **"Gran riesgo"** tienen un 77% menos de probabilidad de haber consumido ($OR = 0.23; p < 0.001$). Incluso la percepción de un riesgo "Leve" ya reduce la probabilidad a la mitad ($OR = 0.51$).
+2.  **Consulta por Angustia:** Haber consultado a un profesional por problemas de angustia o depresión aumenta la probabilidad de consumo sin receta en un **82%** ($OR = 1.82; p < 0.001$). Esto sugiere que, para muchos, el tratamiento formal puede convivir con el uso informal, o que la persistencia de síntomas lleva a la búsqueda de fármacos por vías alternativas.
+3.  **Propensión a la Automedicación:** La costumbre de tomar medicamentos (para dolores físicos, etc.) sin consultar actúa como un predictor de riesgo claro ($OR = 1.72$), casi duplicando la chance de consumir psicofármacos sin receta.
+4.  **Salud Autopercibida:** Quienes perciben su salud como "Regular o Peor" presentan un riesgo aumentado del **66%** ($OR = 1.66$).
+
+# Conclusión
+
+El estudio sobre la prevalencia de vida del consumo de tranquilizantes sin prescripción en Argentina revela que este comportamiento no es aleatorio ni meramente "recreativo". Los datos sugieren que se trata, en gran medida, de una estrategia de afrontamiento (inadecuada) ante el malestar.
+
+El perfil del consumidor no está definido por su género o clase social, sino por su **baja percepción del peligro** de la sustancia y por un patrón conductual previo de **automedicación**. La fuerte asociación con la consulta por angustia y la mala salud autopercibida indica que existe una demanda de alivio sintomático que el sistema de salud formal no está logrando contener completamente, derivando en el uso no supervisado de psicofármacos.
+
+# Discusión y limitaciones
+
+El cambio metodológico hacia el análisis de la **prevalencia de vida** permitió trabajar con la muestra total de la ENCoPraC 2022, superando las limitaciones de potencia estadística de enfoques previos. La baja prevalencia hallada (2.1%) es consistente con el uso de sustancias "sin receta" en población general.
+
+Entre las limitaciones, cabe destacar el diseño transversal del estudio, que impide establecer causalidad estricta (¿la mala salud lleva al consumo o el consumo empeora la percepción de salud?). Asimismo, al tratarse de una conducta socialmente reprobada o ilegal (uso sin receta), podría existir un subregistro en las respuestas. No obstante, la coherencia de los Odds Ratios obtenidos aporta una validez interna considerable a los hallazgos.
