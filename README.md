@@ -1,5 +1,12 @@
 # Behavioral risk factors for non-prescription tranquilizer use
 
+![R](https://img.shields.io/badge/r-%23276DC3.svg?style=for-the-badge&logo=r&logoColor=white)
+![RStudio](https://img.shields.io/badge/RStudio-75AADB?style=for-the-badge&logo=RStudio&logoColor=white)
+![Tidyverse](https://img.shields.io/badge/Tidyverse-222222?style=for-the-badge&logo=R&logoColor=white)
+![ggplot2](https://img.shields.io/badge/ggplot2-Viz-E34F26?style=for-the-badge&logo=R&logoColor=white)
+![gtsummary](https://img.shields.io/badge/gtsummary-Tables-purple?style=for-the-badge&logo=R&logoColor=white)
+![Status](https://img.shields.io/badge/Status-Completed-success?style=for-the-badge)
+
 This project analyzes the behavioral and social determinants of non-prescription anxiolytic consumption in Argentina. The study utilizes data from the 2022 National Survey on Consumption and Care Practices (ENCoPraC) to identify risk profiles associated with the unsupervised use of psychotropic drugs.
 This analysis examines lifetime prevalence to maximize statistical power and compare experimental users against the general population.
 
@@ -36,4 +43,4 @@ To reproduce the analysis:
 ---
 By **Juana Luz Carbajal** 
 
-[![LinkedIn](https://img.shields.io/badge/LinkedIn-Connect-blue?style=flat&logo=linkedin)](https://www.linkedin.com/in/juanaluz/)
+[![LinkedIn](https://img.shields.io/badge/LinkedIn-Connect-0077B5?style=for-the-badge&logo=linkedin&logoColor=white)](https://www.linkedin.com/in/juanaluz/)
